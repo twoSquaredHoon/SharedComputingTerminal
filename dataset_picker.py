@@ -1,6 +1,7 @@
 import curses
 import os
 from pathlib import Path
+from typing import Optional
 
 if os.environ.get("TERM", "") not in ("xterm-256color", "xterm", "screen-256color"):
     os.environ["TERM"] = "xterm-256color"
@@ -24,10 +25,17 @@ C_SUCCESS  = fg(80,  180, 100)  # green — validation passed
 C_WARN     = fg(200, 160, 60)   # amber — warnings / errors
 C_ICON     = fg(160, 55,  55)   # red — folder icons, arrows
 
-DIVIDER = "─" * 55
+def divider_line(width: int) -> str:
+    """Horizontal rule (U+2500), ``width`` cells — pair with two leading spaces for full-row rules."""
+    return "─" * max(0, width)
+
 
 # Curses color pairs (after init_curses_palette in pick_dataset_folder)
 P_TITLE, P_DIVIDER, P_HINT, P_SELECTED, P_NORMAL, P_ICON, P_SUCCESS, P_WARN = range(1, 9)
+
+# After suspend/resume (e.g. nested curses), can_change_color() can flip false while RGB still works.
+# Remember which path succeeded so we do not fall back to 8-color pairs mid-session (title color jump).
+_PALETTE_RGB_OK: Optional[bool] = None
 
 
 def _fit_width(text: str, width: int) -> str:
@@ -37,6 +45,7 @@ def _fit_width(text: str, width: int) -> str:
 
 def _init_curses_palette() -> None:
     """Map RGB-ish colors to curses pairs. ANSI in addstr() breaks ncurses cell accounting."""
+    global _PALETTE_RGB_OK
     specs = [
         (P_TITLE, 16, (180, 50, 50)),
         (P_DIVIDER, 17, (120, 35, 35)),
@@ -57,20 +66,40 @@ def _init_curses_palette() -> None:
         (P_SUCCESS, curses.COLOR_GREEN),
         (P_WARN, curses.COLOR_YELLOW),
     ]
-    try:
-        if curses.can_change_color():
+
+    def apply_rgb() -> bool:
+        try:
             for pair, cid, rgb in specs:
                 r, g, b = rgb
                 curses.init_color(cid, r * 1000 // 255, g * 1000 // 255, b * 1000 // 255)
                 curses.init_pair(pair, cid, -1)
-            return
-    except curses.error:
-        pass
-    for pair, c in fallback:
-        try:
-            curses.init_pair(pair, c, -1)
+            return True
         except curses.error:
-            pass
+            return False
+
+    def apply_fallback() -> None:
+        for pair, c in fallback:
+            try:
+                curses.init_pair(pair, c, -1)
+            except curses.error:
+                pass
+
+    if _PALETTE_RGB_OK is True:
+        if apply_rgb():
+            return
+        _PALETTE_RGB_OK = False
+        apply_fallback()
+        return
+    if _PALETTE_RGB_OK is False:
+        apply_fallback()
+        return
+
+    # First init in this process: try RGB (do not rely only on can_change_color — it can lie after resume).
+    if apply_rgb():
+        _PALETTE_RGB_OK = True
+        return
+    _PALETTE_RGB_OK = False
+    apply_fallback()
 
 
 def _cp(pair: int) -> int:
@@ -223,10 +252,10 @@ def pick_dataset_folder() -> Path:
             addstr(stdscr, 0, 0, "  SHAREDCOMPUTING", _cp(P_TITLE) | curses.A_BOLD)
             addstr(
                 stdscr, 1, 0,
-                "  " + _fit_width(DIVIDER, max(0, w - 4)),
+                "  " + divider_line(max(0, w - 2)),
                 _cp(P_DIVIDER) | curses.A_DIM,
             )
-            addstr(stdscr, 2, 0, "  Select dataset folder", _cp(P_TITLE))
+            addstr(stdscr, 2, 0, "  Select dataset folder", _cp(P_TITLE) | curses.A_BOLD)
             addstr(
                 stdscr, 3, 0,
                 "  ↑↓ navigate   → expand   ← collapse   Enter select   q quit",
@@ -234,7 +263,7 @@ def pick_dataset_folder() -> Path:
             )
             addstr(
                 stdscr, 4, 0,
-                "  " + _fit_width(DIVIDER, max(0, w - 4)),
+                "  " + divider_line(max(0, w - 2)),
                 _cp(P_DIVIDER) | curses.A_DIM,
             )
 
@@ -292,7 +321,7 @@ def pick_dataset_folder() -> Path:
             if div_y > 5:
                 addstr(
                     stdscr, div_y, 0,
-                    "  " + _fit_width(DIVIDER, max(0, w - 4)),
+                    "  " + divider_line(max(0, w - 2)),
                     _cp(P_DIVIDER) | curses.A_DIM,
                 )
 
@@ -341,31 +370,6 @@ def pick_dataset_folder() -> Path:
                 valid, classes, total, err, warnings = validate_dataset(node.path)
                 if valid:
                     result["path"] = node.path
-                    stdscr.erase()
-                    _, w2 = stdscr.getmaxyx()
-                    addstr(stdscr, 0, 0, "  SHAREDCOMPUTING", _cp(P_TITLE) | curses.A_BOLD)
-                    addstr(
-                        stdscr, 1, 0,
-                        "  " + _fit_width(DIVIDER, max(0, w2 - 4)),
-                        _cp(P_DIVIDER) | curses.A_DIM,
-                    )
-                    row = 2
-                    addstr(stdscr, row, 2, f"✓  {node.path}", _cp(P_SUCCESS) | curses.A_BOLD)
-                    row += 1
-                    addstr(
-                        stdscr, row, 2,
-                        f"   Found {total} images across {len(classes)} class(es)",
-                        _cp(P_SUCCESS),
-                    )
-                    row += 1
-                    addstr(stdscr, row, 2, f"   {', '.join(classes)}", _cp(P_HINT))
-                    row += 1
-                    for warn in warnings:
-                        row += 1
-                        addstr(stdscr, row, 2, f"⚠  {warn}", _cp(P_WARN))
-                        row += 1
-                    stdscr.refresh()
-                    curses.napms(2200)
                     return
                 else:
                     message = f"⚠  {err}"
@@ -391,10 +395,6 @@ def pick_dataset_folder() -> Path:
                 continue
             valid, classes, total, err, warnings = validate_dataset(p)
             if valid:
-                print(f"{C_SUCCESS}  ✓  Found {total} images across {len(classes)} class(es){reset()}")
-                print(f"{C_HINT}     {', '.join(classes)}{reset()}")
-                for warn in warnings:
-                    print(f"{C_WARN}  ⚠  {warn}{reset()}")
                 result["path"] = p
                 break
             else:

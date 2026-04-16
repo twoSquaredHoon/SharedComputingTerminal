@@ -10,9 +10,9 @@ Short reference for what each source file in this repository is for. For **color
 
 **What it does**
 
-1. **`splash.draw_splash()`** — boxed intro  
-2. **Enter** — “Press Enter to continue…”  
-3. **`main_menu.run()`** — action menu (**N** opens **`dataset_picker.pick_dataset_folder()`**, sets `DATASET_ROOT` on success)
+1. Sets **`TERM`** for curses (same idea as `dataset_picker`) if needed.  
+2. **`splash.draw_splash()`** — boxed intro.  
+3. **`main_menu.run()`** — menu (**N** → **`dataset_picker.pick_dataset_folder`** → **`run_config.run_interactive()`** → **`confirm.review_and_confirm()`**; **Q** quits).
 
 **Run:** `python3 main.py`
 
@@ -50,9 +50,36 @@ Short reference for what each source file in this repository is for. For **color
 
 ## `main_menu.py` — main menu
 
-**Role:** Scroll-friendly text menu (raw key input): new run, history, predict, quit. **`N`** launches the dataset picker; **`Q`** exits.
+**Role:** Scroll-friendly text menu (raw key input): new run, history, predict, quit. **`N`** picks a dataset → **run config** → **confirm** review screen; **`Q`** exits.
 
 **Run alone:** `python3 main_menu.py` (skips splash).
+
+---
+
+## `run_config.py` — training run settings
+
+**Role:** After a dataset is chosen, collects **model** (multiple-choice placeholders in `MODEL_CHOICES`), **epochs**, **batch size**, **learning rate**, and **run name**. Curses UI matches `dataset_picker` styling; stdio fallback uses numbered choices.
+
+**What it does**
+
+- Reads **`DATASET_ROOT`** from the environment when set; otherwise asks for a folder path (or **`q`** to cancel).
+- **`run_interactive(bump_first=True)`** — full-screen **curses** UI (same style as `dataset_picker`: color pairs, header + dividers); **`s`** save, **`q`** cancel, **Enter** edits the highlighted row. Falls back to line prompts if curses fails. Writes **`runtime/run_config.json`** and returns the config dict (or `None` if cancelled).
+- **`load_config()`** / **`save_config()`** — helpers for other modules.
+
+**Run alone:** `python3 run_config.py`
+
+---
+
+## `confirm.py` — review before run
+
+**Role:** Read-only full-screen summary of the saved run (dataset, model, hyperparameters, paths) so the user can **confirm or cancel** before training is started later.
+
+**What it does**
+
+- **`review_and_confirm(cfg=None)`** — if ``cfg`` is omitted, loads **`runtime/run_config.json`**. Curses UI matches other screens; **`y`** / **Enter** confirm, **`n`** / **q** / **Esc** cancel. Stdio fallback if curses fails.
+- Returns **`True`** if confirmed, **`False`** if cancelled or no config.
+
+**Run alone:** `python3 confirm.py` (loads saved config if present).
 
 ---
 

@@ -1,6 +1,8 @@
 import os
 import shutil
 import sys
+
+from dataset_picker import divider_line
 import termios
 import tty
 
@@ -65,30 +67,6 @@ def get_last_run_summary():
     return None
 
 
-def get_dataset_summary():
-    dataset_root = os.environ.get("DATASET_ROOT", os.path.join("data"))
-    if not os.path.isdir(dataset_root):
-        return "no dataset loaded"
-    try:
-        classes = [
-            d for d in os.listdir(dataset_root)
-            if os.path.isdir(os.path.join(dataset_root, d))
-            and not d.startswith(".")
-        ]
-        if not classes:
-            return "no dataset loaded"
-        total = sum(
-            len([
-                f for f in os.listdir(os.path.join(dataset_root, c))
-                if not f.startswith(".")
-            ])
-            for c in classes
-        )
-        return f"{os.path.basename(dataset_root)}  ·  {total:,} images  ·  {len(classes)} classes"
-    except Exception:
-        return "no dataset loaded"
-
-
 def _divider_width() -> int:
     """Dash count so `  ───…` spans to the last terminal column (two leading spaces)."""
     w = shutil.get_terminal_size().columns
@@ -97,8 +75,7 @@ def _divider_width() -> int:
 
 def draw_divider():
     n = _divider_width()
-    line = "─" * n if n else ""
-    print(f"  {C_DIVIDER}{DIM}{line}{RESET}")
+    print(f"  {C_DIVIDER}{DIM}{divider_line(n)}{RESET}")
 
 
 def draw_menu():
@@ -107,8 +84,7 @@ def draw_menu():
     draw_divider()
     print()
 
-    dataset_info = get_dataset_summary()
-    last_run     = get_last_run_summary()
+    last_run = get_last_run_summary()
 
     print(f"  {C_TITLE}{BOLD}SharedComputing{RESET}")
     print(f"  {C_HINT}{DIM}distributed image classifier{RESET}")
@@ -126,8 +102,6 @@ def draw_menu():
     print()
     draw_divider()
     print()
-
-    print(f"  {C_HINT}{DIM}dataset   {RESET}{C_NORMAL}{dataset_info}{RESET}")
 
     if last_run:
         print(f"  {C_HINT}{DIM}run       {RESET}{C_NORMAL}{last_run}{RESET}")
@@ -160,6 +134,19 @@ def run():
                 print(
                     f"\n  {C_SUCCESS}✓  Dataset root:{RESET} {C_NORMAL}{chosen}{RESET}\n"
                 )
+                from run_config import run_interactive
+
+                cfg = run_interactive(bump_first=True)
+                if cfg is not None:
+                    from confirm import review_and_confirm
+
+                    if review_and_confirm(cfg):
+                        print(f"\n  {C_SUCCESS}✓  Run confirmed — next step: start training when wired.{RESET}\n")
+                    else:
+                        print(
+                            f"\n  {C_HINT}{DIM}Confirmation cancelled — "
+                            f"settings stay saved under runtime/run_config.json{RESET}\n"
+                        )
                 input(f"  {C_HINT}{DIM}Press Enter to return to the menu…{RESET}  ")
 
         elif key == "h":

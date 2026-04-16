@@ -42,14 +42,16 @@ Palette is built around a **muted red brand anchor**, **warm grey-red** neutrals
 
 ### Typography
 
-- **Bold** — Brand title (“SharedComputing”, “SHAREDCOMPUTING”), selected row, success headline, splash frame bars.
+- **Bold** — Brand title (“SharedComputing”, “SHAREDCOMPUTING”), **screen subtitles** on full-screen curses flows (“Configure run”, “Select dataset folder”, “Choose model”, field-editor title, “Review run”) — same `P_TITLE` + `A_BOLD` as the brand line so color stays stable across nested pickers — selected row, success headline, splash frame bars.
 - **Dim** — Dividers, shortcut hint line, secondary copy (version, tagline on splash).
 
 ### Geometry and symbols
 
-- **Horizontal rules:** Unicode **`─`** (U+2500), clipped to terminal width where needed (`_fit_width` / `w - 4` margin pattern).
-- **Splash:** Rounded box **`╭` `╮` `╰` `╯`** with **`│`** sides; full terminal width.
-- **Picker:** Two-space left margin before titles and rules; tree indent uses four spaces per depth level.
+- **Horizontal rules:** Unicode **`─`** (U+2500). Build them with **`divider_line(width)`** in `dataset_picker.py` so every screen uses the same character and length logic:
+  - **Full-screen curses** (picker, configure run, model list, field editor, review): two leading spaces, then `divider_line(max(0, w - 2))` so the rule fills the row (terminal width `w`).
+  - **Scrollable stdio** (menu, configure / confirm fallbacks): two leading spaces, then `divider_line(max(0, columns - 2))` — same width math as curses.
+- **Splash:** Rounded box **`╭` `╮` `╰` `╯`** with **`│`** sides; inner horizontal segments sized to terminal width.
+- **Picker / config:** Two-space left margin before titles and rules; tree indent uses four spaces per depth level.
 
 ### Iconography
 
