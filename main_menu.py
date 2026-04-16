@@ -32,6 +32,15 @@ MENU_ITEMS = [
 VALID_KEYS = {item[0].lower() for item in MENU_ITEMS}
 
 
+def bump_viewport_top() -> None:
+    """Clear the visible terminal and put the cursor at the top-left so the next output fills from the top.
+
+    Uses CSI 2 J and CSI H only (not CSI 3 J), so scrollback is usually kept unlike some ``clear`` implementations.
+    """
+    sys.stdout.write("\033[2J\033[H")
+    sys.stdout.flush()
+
+
 def getch():
     fd = sys.stdin.fileno()
     old = termios.tcgetattr(fd)
@@ -172,4 +181,5 @@ def run():
 
 
 if __name__ == "__main__":
+    bump_viewport_top()
     run()
