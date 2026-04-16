@@ -90,8 +90,9 @@ def get_dataset_summary():
 
 
 def _divider_width() -> int:
+    """Dash count so `  ───…` spans to the last terminal column (two leading spaces)."""
     w = shutil.get_terminal_size().columns
-    return max(0, min(56, w - 4))
+    return max(0, w - 2)
 
 
 def draw_divider():

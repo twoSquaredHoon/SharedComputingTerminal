@@ -4,6 +4,20 @@ Short reference for what each source file in this repository is for. For **color
 
 ---
 
+## `main.py` — single entry (recommended)
+
+**Role:** One command runs the full CLI flow in order.
+
+**What it does**
+
+1. **`splash.draw_splash()`** — boxed intro  
+2. **Enter** — “Press Enter to continue…”  
+3. **`main_menu.run()`** — action menu (**N** opens **`dataset_picker.pick_dataset_folder()`**, sets `DATASET_ROOT` on success)
+
+**Run:** `python3 main.py`
+
+---
+
 ## `splash.py` — intro / splash screen
 
 **Role:** Terminal welcome screen: boxed banner, title, version, tagline, and credits.
@@ -34,9 +48,11 @@ Short reference for what each source file in this repository is for. For **color
 
 ---
 
-## `main_menu.py` — main menu (optional)
+## `main_menu.py` — main menu
 
-**Role:** Text menu with raw key input for actions such as new run, history, predict, quit. Present in the repo as a separate entry point; wire it to `splash` / `dataset_picker` in your own `main` script if needed.
+**Role:** Scroll-friendly text menu (raw key input): new run, history, predict, quit. **`N`** launches the dataset picker; **`Q`** exits.
+
+**Run alone:** `python3 main_menu.py` (skips splash).
 
 ---
 
@@ -50,5 +66,5 @@ Short reference for what each source file in this repository is for. For **color
 
 ## Typical flow
 
-1. **`splash.draw_splash()`** — show intro (optionally wait for the user).
-2. **`dataset_picker.pick_dataset_folder()`** — choose and validate a dataset root for training or tooling.
+1. **`python3 main.py`** — splash → menu → pickers as above.  
+2. Or call **`splash.draw_splash()`**, then **`main_menu.run()`**, or **`dataset_picker.pick_dataset_folder()`** only from your own script.

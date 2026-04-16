@@ -29,6 +29,7 @@ def draw_splash():
     row(f"  {DIM}v0.1.0{RESET}")
     row()
     row(f"  {DIM}Distributed ML training — local & simple{RESET}")
+    row(f"  {DIM}Made by YSL, SHJ, SHL{RESET}")
     row()
     print(f"{RED}{BOLD}{bottom}{RESET}")
     print()
