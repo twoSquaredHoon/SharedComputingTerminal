@@ -11,8 +11,9 @@ Short reference for what each source file in this repository is for. For **color
 **What it does**
 
 1. Sets **`TERM`** for curses (same idea as `dataset_picker`) if needed.  
-2. **`splash.draw_splash()`** — boxed intro.  
-3. **`main_menu.run()`** — menu (**N** → **`dataset_picker.pick_dataset_folder`** → **`run_config.run_interactive()`** → **`confirm.review_and_confirm()`**; **Q** quits).
+2. **`_load_pipeline()`** — imports **`confirm`**, **`dataset_picker`**, **`results`**, **`run_config`**, **`training_monitor`** so a bad install fails before the splash.  
+3. **`splash.draw_splash()`** — boxed intro.  
+4. **`main_menu.run()`** — menu (**N** → … → **`training_monitor.run_training_monitor()`**; **H** → **`results.show_results()`**; **Q** quits).
 
 **Run:** `python3 main.py`
 
@@ -50,7 +51,7 @@ Short reference for what each source file in this repository is for. For **color
 
 ## `main_menu.py` — main menu
 
-**Role:** Scroll-friendly text menu (raw key input): new run, history, predict, quit. **`N`** picks a dataset → **run config** → **confirm** review screen; **`Q`** exits.
+**Role:** Scroll-friendly text menu (raw key input): new run, results, predict, quit. **`N`** picks a dataset → **run config** → **confirm** → **training monitor**; **`H`** opens **`results.show_results()`**; **`Q`** exits.
 
 **Run alone:** `python3 main_menu.py` (skips splash).
 
@@ -58,10 +59,11 @@ Short reference for what each source file in this repository is for. For **color
 
 ## `run_config.py` — training run settings
 
-**Role:** After a dataset is chosen, collects **model** (multiple-choice placeholders in `MODEL_CHOICES`), **epochs**, **batch size**, **learning rate**, and **run name**. Curses UI matches `dataset_picker` styling; stdio fallback uses numbered choices.
+**Role:** After a dataset is chosen, collects **architecture** (one of `MODEL_CHOICES`, trained **from scratch** — not fine-tuning), **epochs**, **batch size**, **learning rate**, and **run name**. Curses UI matches `dataset_picker` styling; stdio fallback uses numbered choices.
 
 **What it does**
 
+- Saved JSON uses **`version`: 2** and **`training_mode`: `"from_scratch"`** so training code can rely on random init instead of pretrained weights.
 - Reads **`DATASET_ROOT`** from the environment when set; otherwise asks for a folder path (or **`q`** to cancel).
 - **`run_interactive(bump_first=True)`** — full-screen **curses** UI (same style as `dataset_picker`: color pairs, header + dividers); **`s`** save, **`q`** cancel, **Enter** edits the highlighted row. Falls back to line prompts if curses fails. Writes **`runtime/run_config.json`** and returns the config dict (or `None` if cancelled).
 - **`load_config()`** / **`save_config()`** — helpers for other modules.
@@ -72,7 +74,7 @@ Short reference for what each source file in this repository is for. For **color
 
 ## `confirm.py` — review before run
 
-**Role:** Read-only full-screen summary of the saved run (dataset, model, hyperparameters, paths) so the user can **confirm or cancel** before training is started later.
+**Role:** Read-only full-screen summary of the saved run (dataset, training mode, architecture, hyperparameters, paths) so the user can **confirm or cancel** before training is started later.
 
 **What it does**
 
@@ -80,6 +82,31 @@ Short reference for what each source file in this repository is for. For **color
 - Returns **`True`** if confirmed, **`False`** if cancelled or no config.
 
 **Run alone:** `python3 confirm.py` (loads saved config if present).
+
+---
+
+## `training_monitor.py` — live training dashboard
+
+**Role:** Full-screen **curses** view (stdio fallback) showing run name, architecture, epoch progress placeholder, loss / val metrics (stubbed until a trainer feeds updates), and status. Opens after the user confirms a run from **`confirm`**.
+
+**What it does**
+
+- **`run_training_monitor(cfg=None)`** — loads **`runtime/run_config.json`** if ``cfg`` is omitted. **q** / **Esc** leaves the screen (curses); stdio fallback asks for **Enter** after the summary.
+
+**Run alone:** `python3 training_monitor.py` (requires an existing saved config).
+
+---
+
+## `results.py` — run history / metrics
+
+**Role:** Browse rows from **`runtime/results.db`** table **`runs`** (same DB the menu footer uses for “last run”). Full-screen **curses** list with scroll; stdio fallback prints a numbered list.
+
+**What it does**
+
+- **`show_results()`** — loads recent runs (newest first). **↑↓** / **j** / **k** move selection when the list is long; **q** / **Esc** exits. If the DB is missing or empty, shows an empty state message.
+- Column names are not fixed: any columns present are read; display prefers **`id`**, **`run_name`** / **`name`**, **`model_name`**, **`val_acc`**, **`created_at`** for the summary line.
+
+**Run alone:** `python3 results.py`
 
 ---
 

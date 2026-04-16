@@ -106,7 +106,6 @@ def draw_menu():
     if last_run:
         print(f"  {C_HINT}{DIM}run       {RESET}{C_NORMAL}{last_run}{RESET}")
 
-    print()
     print(f"  {C_HINT}{DIM}press a key to select{RESET}")
     print()
 
@@ -141,7 +140,9 @@ def run():
                     from confirm import review_and_confirm
 
                     if review_and_confirm(cfg):
-                        print(f"\n  {C_SUCCESS}✓  Run confirmed — next step: start training when wired.{RESET}\n")
+                        from training_monitor import run_training_monitor
+
+                        run_training_monitor(cfg)
                     else:
                         print(
                             f"\n  {C_HINT}{DIM}Confirmation cancelled — "
@@ -150,8 +151,10 @@ def run():
                 input(f"  {C_HINT}{DIM}Press Enter to return to the menu…{RESET}  ")
 
         elif key == "h":
-            print(f"\n  {C_ICON}{DIM}→ loading run history…{RESET}\n")
-            input(f"  {C_WARN}⚠  [run_history.py not connected yet — press enter to return]{RESET}  ")
+            from results import show_results
+
+            show_results()
+            input(f"  {C_HINT}{DIM}Press Enter to return to the menu…{RESET}  ")
 
         elif key == "p":
             print(f"\n  {C_ICON}{DIM}→ launching predict…{RESET}\n")

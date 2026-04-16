@@ -2,6 +2,9 @@
 Training run configuration: full-screen curses UI (same style as dataset_picker),
 with a line-oriented fallback if curses is unavailable.
 
+Saved configs describe **training from scratch** (random initialization): pick an
+architecture ID, not a pretrained checkpoint to fine-tune.
+
 Writes ``runtime/run_config.json`` and returns the config dict.
 """
 
@@ -54,11 +57,10 @@ C_WARN = fg(200, 160, 60)
 RUNTIME_DIR = Path("runtime")
 CONFIG_PATH = RUNTIME_DIR / "run_config.json"
 
-# Placeholder model IDs until training code maps them to real architectures / weights.
+# Architecture IDs — training builds weights from scratch (random init) for the chosen graph.
 MODEL_CHOICES: tuple[str, ...] = (
-    "placeholder_resnet_style",
-    "placeholder_vit_style",
-    "placeholder_custom_head",
+    "simple_cnn",
+    "deeper_cnn",
 )
 
 DEFAULTS: dict[str, Any] = {
@@ -105,9 +107,10 @@ def build_config(
 ) -> dict[str, Any]:
     root = str(dataset_root.resolve()) if dataset_root else ""
     return {
-        "version": 1,
+        "version": 2,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "run_name": run_name,
+        "training_mode": "from_scratch",
         "dataset_root": root,
         "model_name": model_name,
         "epochs": epochs,
@@ -229,7 +232,7 @@ def _validate_and_normalize_field(key_name: str, raw: str) -> tuple[bool, str, s
 
 
 def _run_model_pick(stdscr, state: dict[str, str]) -> None:
-    """Full-screen list to choose one of ``MODEL_CHOICES``. Esc restores the previous value."""
+    """Full-screen list to choose one of ``MODEL_CHOICES`` (scratch-trained architecture). Esc cancels."""
     old = state["model_name"]
     try:
         pick = MODEL_CHOICES.index(old.strip())
@@ -262,14 +265,14 @@ def _run_model_pick(stdscr, state: dict[str, str]) -> None:
             "  " + divider_line(max(0, w - 2)),
             _cp(P_DIVIDER) | curses.A_DIM,
         )
-        addstr(stdscr, 2, 0, "  Choose model", _cp(P_TITLE) | curses.A_BOLD)
+        addstr(stdscr, 2, 0, "  Choose architecture", _cp(P_TITLE) | curses.A_BOLD)
         addstr(
             stdscr,
             3,
             0,
             "  "
             + _fit_width(
-                "Placeholder options — replace IDs when real models are wired up.",
+                "Random init — train from scratch (no pretrained weights).",
                 max(0, w - 4),
             ),
             _cp(P_HINT) | curses.A_DIM,
@@ -442,7 +445,7 @@ def _run_config_curses(stdscr, result: dict[str, Any]) -> None:
 
     labels = [
         ("Dataset root", "dataset", True),
-        ("Model", "model_name", False),
+        ("Architecture", "model_name", False),
         ("Epochs", "epochs", False),
         ("Batch size", "batch_size", False),
         ("Learning rate", "learning_rate", False),
@@ -575,7 +578,7 @@ def _run_config_curses(stdscr, result: dict[str, Any]) -> None:
             rn = state["run_name"].strip() or default_run
             mn = state["model_name"].strip()
             if mn not in MODEL_CHOICES:
-                msg, msg_warn = "Choose a model from the list (Enter on Model).", True
+                msg, msg_warn = "Choose an architecture from the list (Enter on Architecture).", True
                 continue
             cfg = build_config(
                 dataset_root=ds_path,
@@ -606,7 +609,10 @@ def _run_config_curses(stdscr, result: dict[str, Any]) -> None:
 
 def _prompt_model_choice_stdio() -> Optional[str]:
     """Numbered list for non-curses fallback; ``q`` cancels."""
-    print(f"\n  {C_TITLE}{BOLD}Model{RESET}  {C_HINT}{DIM}(placeholders){RESET}\n")
+    print(
+        f"\n  {C_TITLE}{BOLD}Architecture{RESET}  "
+        f"{C_HINT}{DIM}(from scratch — no pretrained weights){RESET}\n"
+    )
     for i, m in enumerate(MODEL_CHOICES, 1):
         print(f"  {C_ICON}{i}{RESET}  {C_NORMAL}{m}{RESET}")
     raw = input(

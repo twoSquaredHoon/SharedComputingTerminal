@@ -29,7 +29,8 @@ from run_config import CONFIG_PATH, load_config
 _REVIEW_ROWS: tuple[tuple[str, str], ...] = (
     ("run_name", "Run name"),
     ("dataset_root", "Dataset"),
-    ("model_name", "Model"),
+    ("training_mode", "Training"),
+    ("model_name", "Architecture"),
     ("epochs", "Epochs"),
     ("batch_size", "Batch size"),
     ("learning_rate", "Learning rate"),
@@ -45,6 +46,11 @@ def _bump_stdio() -> None:
 
 
 def _format_value(key: str, cfg: dict[str, Any]) -> str:
+    if key == "training_mode":
+        v = cfg.get("training_mode")
+        if v in (None, ""):
+            return "from scratch"
+        return str(v)
     v = cfg.get(key, "")
     if v is None:
         return ""
