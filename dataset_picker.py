@@ -26,13 +26,75 @@ C_ICON     = fg(160, 55,  55)   # red — folder icons, arrows
 
 DIVIDER = "─" * 55
 
-# ── curses addstr with embedded ANSI ─────────────────────────────────────────
+# Curses color pairs (after init_curses_palette in pick_dataset_folder)
+P_TITLE, P_DIVIDER, P_HINT, P_SELECTED, P_NORMAL, P_ICON, P_SUCCESS, P_WARN = range(1, 9)
+
+
+def _fit_width(text: str, width: int) -> str:
+    """Slice text to at most width chars; width <= 0 yields empty (never negative slice)."""
+    return text[: max(0, width)]
+
+
+def _init_curses_palette() -> None:
+    """Map RGB-ish colors to curses pairs. ANSI in addstr() breaks ncurses cell accounting."""
+    specs = [
+        (P_TITLE, 16, (180, 50, 50)),
+        (P_DIVIDER, 17, (120, 35, 35)),
+        (P_HINT, 18, (110, 95, 95)),
+        (P_SELECTED, 19, (220, 110, 110)),
+        (P_NORMAL, 20, (200, 190, 190)),
+        (P_ICON, 21, (160, 55, 55)),
+        (P_SUCCESS, 22, (80, 180, 100)),
+        (P_WARN, 23, (200, 160, 60)),
+    ]
+    fallback = [
+        (P_TITLE, curses.COLOR_RED),
+        (P_DIVIDER, curses.COLOR_RED),
+        (P_HINT, curses.COLOR_WHITE),
+        (P_SELECTED, curses.COLOR_MAGENTA),
+        (P_NORMAL, curses.COLOR_WHITE),
+        (P_ICON, curses.COLOR_RED),
+        (P_SUCCESS, curses.COLOR_GREEN),
+        (P_WARN, curses.COLOR_YELLOW),
+    ]
+    try:
+        if curses.can_change_color():
+            for pair, cid, rgb in specs:
+                r, g, b = rgb
+                curses.init_color(cid, r * 1000 // 255, g * 1000 // 255, b * 1000 // 255)
+                curses.init_pair(pair, cid, -1)
+            return
+    except curses.error:
+        pass
+    for pair, c in fallback:
+        try:
+            curses.init_pair(pair, c, -1)
+        except curses.error:
+            pass
+
+
+def _cp(pair: int) -> int:
+    return curses.color_pair(pair)
+
+
+# ── curses addstr (no ANSI — use attrs / color_pair only) ──────────────────
 def addstr(stdscr, y, x, text, attr=0):
-    """Write ANSI-colored text at (y, x). Silently clips if out of bounds."""
+    """Write text at (y, x). Silently clips if out of bounds."""
     try:
         stdscr.addstr(y, x, text, attr)
     except curses.error:
         pass
+
+
+def _put(stdscr, y, x, text, attr, max_x: int) -> int:
+    """Draw text starting at x; clip to max_x (exclusive). Returns next x."""
+    if x >= max_x or not text:
+        return x
+    clipped = _fit_width(text, max_x - x)
+    if clipped:
+        addstr(stdscr, y, x, clipped, attr)
+        return x + len(clipped)
+    return x
 
 
 class FolderNode:
@@ -146,9 +208,7 @@ def pick_dataset_folder() -> Path:
         curses.curs_set(0)
         curses.use_default_colors()
         curses.start_color()
-
-        # One neutral pair for the selected row reverse — everything else via ANSI
-        curses.init_pair(1, curses.COLOR_WHITE, -1)
+        _init_curses_palette()
 
         cursor    = 0
         scroll    = 0
@@ -160,11 +220,23 @@ def pick_dataset_folder() -> Path:
             h, w = stdscr.getmaxyx()
 
             # ── Header ────────────────────────────────────────────────────────
-            addstr(stdscr, 0, 0, f"{C_TITLE}{bold()}  SHAREDCOMPUTING{reset()}")
-            addstr(stdscr, 1, 0, f"{C_DIVIDER}{dim()}  {DIVIDER[:w-4]}{reset()}")
-            addstr(stdscr, 2, 0, f"{C_TITLE}  Select dataset folder{reset()}")
-            addstr(stdscr, 3, 0, f"{C_HINT}{dim()}  ↑↓ navigate   → expand   ← collapse   Enter select   q quit{reset()}")
-            addstr(stdscr, 4, 0, f"{C_DIVIDER}{dim()}  {DIVIDER[:w-4]}{reset()}")
+            addstr(stdscr, 0, 0, "  SHAREDCOMPUTING", _cp(P_TITLE) | curses.A_BOLD)
+            addstr(
+                stdscr, 1, 0,
+                "  " + _fit_width(DIVIDER, max(0, w - 4)),
+                _cp(P_DIVIDER) | curses.A_DIM,
+            )
+            addstr(stdscr, 2, 0, "  Select dataset folder", _cp(P_TITLE))
+            addstr(
+                stdscr, 3, 0,
+                "  ↑↓ navigate   → expand   ← collapse   Enter select   q quit",
+                _cp(P_HINT) | curses.A_DIM,
+            )
+            addstr(
+                stdscr, 4, 0,
+                "  " + _fit_width(DIVIDER, max(0, w - 4)),
+                _cp(P_DIVIDER) | curses.A_DIM,
+            )
 
             # ── Tree ──────────────────────────────────────────────────────────
             visible = []
@@ -184,33 +256,52 @@ def pick_dataset_folder() -> Path:
                 indent   = "    " * node.depth
                 has_kids = node.has_children()
 
-                if node.expanded and has_kids:
-                    arrow = f"{C_ICON}▼{reset()} "
-                elif has_kids:
-                    arrow = f"{C_ICON}▶{reset()} "
-                else:
-                    arrow = "  "
-
                 name = str(node.path) if node.depth == 0 else node.path.name
-
+                x = 0
                 if i == cursor:
-                    label = f"{C_SELECTED}{bold()}  {indent}{arrow}{C_SELECTED}📁 {name}{reset()}"
+                    sel = _cp(P_SELECTED) | curses.A_BOLD
+                    x = _put(stdscr, y, x, "  ", sel, w)
+                    x = _put(stdscr, y, x, indent, sel, w)
+                    if node.expanded and has_kids:
+                        x = _put(stdscr, y, x, "▼", _cp(P_ICON), w)
+                        x = _put(stdscr, y, x, " ", sel, w)
+                    elif has_kids:
+                        x = _put(stdscr, y, x, "▶", _cp(P_ICON), w)
+                        x = _put(stdscr, y, x, " ", sel, w)
+                    else:
+                        x = _put(stdscr, y, x, "  ", sel, w)
+                    x = _put(stdscr, y, x, "📁 ", sel, w)
+                    _put(stdscr, y, x, name, sel, w)
                 else:
-                    label = f"{C_NORMAL}  {indent}{arrow}{C_HINT}📁 {reset()}{C_NORMAL}{name}{reset()}"
-
-                addstr(stdscr, y, 0, label)
+                    norm = _cp(P_NORMAL)
+                    x = _put(stdscr, y, x, "  ", norm, w)
+                    x = _put(stdscr, y, x, indent, norm, w)
+                    if node.expanded and has_kids:
+                        x = _put(stdscr, y, x, "▼", _cp(P_ICON), w)
+                        x = _put(stdscr, y, x, " ", norm, w)
+                    elif has_kids:
+                        x = _put(stdscr, y, x, "▶", _cp(P_ICON), w)
+                        x = _put(stdscr, y, x, " ", norm, w)
+                    else:
+                        x = _put(stdscr, y, x, "  ", norm, w)
+                    x = _put(stdscr, y, x, "📁 ", _cp(P_HINT), w)
+                    _put(stdscr, y, x, name, norm, w)
 
             # ── Bottom divider + message ───────────────────────────────────────
             div_y = h - 3
             if div_y > 5:
-                addstr(stdscr, div_y, 0, f"{C_DIVIDER}{dim()}  {DIVIDER[:w-4]}{reset()}")
+                addstr(
+                    stdscr, div_y, 0,
+                    "  " + _fit_width(DIVIDER, max(0, w - 4)),
+                    _cp(P_DIVIDER) | curses.A_DIM,
+                )
 
             if message:
-                color = C_SUCCESS if msg_ok else C_WARN
+                msg_attr = _cp(P_SUCCESS) if msg_ok else _cp(P_WARN)
                 msg_y = h - 2
                 for line in message.split("\n"):
                     if 0 <= msg_y < h:
-                        addstr(stdscr, msg_y, 2, f"{color}{line[:w-4]}{reset()}")
+                        addstr(stdscr, msg_y, 2, _fit_width(line, max(0, w - 4)), msg_attr)
                         msg_y += 1
 
             stdscr.refresh()
@@ -251,15 +342,28 @@ def pick_dataset_folder() -> Path:
                 if valid:
                     result["path"] = node.path
                     stdscr.erase()
-                    addstr(stdscr, 0, 0, f"{C_TITLE}{bold()}  SHAREDCOMPUTING{reset()}")
-                    addstr(stdscr, 1, 0, f"{C_DIVIDER}{dim()}  {DIVIDER}{reset()}")
+                    _, w2 = stdscr.getmaxyx()
+                    addstr(stdscr, 0, 0, "  SHAREDCOMPUTING", _cp(P_TITLE) | curses.A_BOLD)
+                    addstr(
+                        stdscr, 1, 0,
+                        "  " + _fit_width(DIVIDER, max(0, w2 - 4)),
+                        _cp(P_DIVIDER) | curses.A_DIM,
+                    )
                     row = 2
-                    addstr(stdscr, row, 2, f"{C_SUCCESS}{bold()}✓  {node.path}{reset()}"); row += 1
-                    addstr(stdscr, row, 2, f"{C_SUCCESS}   Found {total} images across {len(classes)} class(es){reset()}"); row += 1
-                    addstr(stdscr, row, 2, f"{C_HINT}   {', '.join(classes)}{reset()}"); row += 1
+                    addstr(stdscr, row, 2, f"✓  {node.path}", _cp(P_SUCCESS) | curses.A_BOLD)
+                    row += 1
+                    addstr(
+                        stdscr, row, 2,
+                        f"   Found {total} images across {len(classes)} class(es)",
+                        _cp(P_SUCCESS),
+                    )
+                    row += 1
+                    addstr(stdscr, row, 2, f"   {', '.join(classes)}", _cp(P_HINT))
+                    row += 1
                     for warn in warnings:
                         row += 1
-                        addstr(stdscr, row, 2, f"{C_WARN}⚠  {warn}{reset()}"); row += 1
+                        addstr(stdscr, row, 2, f"⚠  {warn}", _cp(P_WARN))
+                        row += 1
                     stdscr.refresh()
                     curses.napms(2200)
                     return
